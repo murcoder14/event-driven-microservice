@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Set default level to WARN -->
+    <root level="WARN">
+        <appender-ref ref="CONSOLE" />
+    </root>
+
+    <!-- Suppress noisy libraries -->
+    <logger name="com.github.dockerjava" level="ERROR" />
+    <logger name="org.testcontainers" level="WARN" />
+    <logger name="org.apache.http" level="ERROR" />
+    <logger name="org.apache.hc.client5" level="ERROR" />
+    <logger name="com.github.dockerjava.zerodep.shaded.org.apache" level="ERROR" />
+    <logger name="org.springframework" level="WARN" />
+    <logger name="org.springframework.test" level="WARN" />
+    <logger name="org.springframework.jdbc" level="WARN" />
+    <logger name="org.hibernate" level="WARN" />
+    <logger name="org.flywaydb" level="WARN" />
+    <logger name="io.awspring.cloud" level="WARN" />
+    <logger name="software.amazon.awssdk" level="ERROR" />
+    <logger name="org.awaitility" level="WARN" />
+    <logger name="tc" level="WARN" />
+    
+    <!-- Your application - set to WARN or INFO as needed -->
+    <logger name="org.muralis.service" level="WARN" />
+</configuration>

@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: event-driven-microservice-test
+  
+  datasource:
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    default-schema: tmschema
+    schemas: tmschema
+
+  cloud:
+    aws:
+      sqs:
+        listener:
+          auto-startup: false  # Disable listeners - test service layer directly
+
+server:
+  port: 0  # Random port for tests
+
+app:
+  database:
+    schema: tmschema
+  openmeteo:
+    geocoding-url: https://geocoding-api.open-meteo.com/v1/search
+    weather-url: https://api.open-meteo.com/v1/forecast
+
+logging:
+  level:
+    root: WARN
+    org.muralis.service: WARN
+    org.testcontainers: WARN
+    com.github.dockerjava: ERROR
+    org.springframework: WARN
+    org.springframework.test: WARN
+    org.springframework.jdbc: WARN
+    org.awaitility: WARN
+    org.hibernate: WARN
+    io.awspring.cloud: WARN
+    software.amazon.awssdk: ERROR
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      weatherApi:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        recordExceptions:
+          - org.muralis.service.exception.RecoverableApiException
+        ignoreExceptions:
+          - org.muralis.service.exception.IrrecoverableApiException
+  retry:
+    instances:
+      weatherApi:
+        maxAttempts: 3
+        waitDuration: 1s
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.muralis.service.exception.RecoverableApiException
+        ignoreExceptions:
+          - org.muralis.service.exception.IrrecoverableApiException

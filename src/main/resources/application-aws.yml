@@ -1,0 +1,9 @@
+spring:
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:us-east-1}
+      s3:
+        endpoint: null
+      sqs:
+        endpoint: null

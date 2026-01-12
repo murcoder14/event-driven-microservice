@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5434/event_db
+    username: tmapp
+    password: app_password
+  flyway:
+    user: tmpower
+    password: power_password
+  cloud:
+    aws:
+      endpoint: http://localhost:4566
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      s3:
+        enabled: true
+        endpoint: http://localhost:4566
+        path-style-access-enabled: true
+      sqs:
+        enabled: true
+
+app:
+  s3-event-queue: s3-event-queue
+  direct-message-queue: direct-message-queue

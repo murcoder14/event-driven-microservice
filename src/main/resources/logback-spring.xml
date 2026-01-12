@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <springProperty scope="context" name="applicationName" source="spring.application.name"/>
+    
+    <!-- Console Appender with JSON for AWS -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"application":"${applicationName}"}</customFields>
+            <fieldNames>
+                <timestamp>timestamp</timestamp>
+                <message>message</message>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+        </encoder>
+    </appender>
+    
+    <!-- Console Appender with Plain Text for Local -->
+    <appender name="CONSOLE_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <!-- Profile-specific configuration -->
+    <springProfile name="aws">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </root>
+    </springProfile>
+    
+    <springProfile name="local">
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE_PLAIN"/>
+        </root>
+    </springProfile>
+    
+    <!-- Default (if no profile) -->
+    <springProfile name="!aws &amp; !local">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_PLAIN"/>
+        </root>
+    </springProfile>
+    
+    <!-- Application-specific loggers -->
+    <logger name="org.muralis.service" level="DEBUG"/>
+    <logger name="io.awspring.cloud.sqs" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.jdbc" level="DEBUG"/>
+    
+</configuration>

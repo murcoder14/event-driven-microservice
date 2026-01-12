@@ -1,0 +1,109 @@
+spring:
+  application:
+    name: event-driven-microservice
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:event_db}?currentSchema=${DB_SCHEMA:tmschema}
+    username: ${DB_USER:tmapp}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    default-schema: ${DB_SCHEMA:tmschema}
+    schemas: ${DB_SCHEMA:tmschema}
+    user: ${FLYWAY_USER:tmpower}
+    password: ${FLYWAY_PASSWORD:password}
+
+server:
+  shutdown: graceful
+
+app:
+  s3-event-queue: ${S3_EVENT_QUEUE:s3-event-queue}
+  direct-message-queue: ${DIRECT_MESSAGE_QUEUE:direct-message-queue}
+  direct-message-dlq: ${DIRECT_MESSAGE_DLQ:direct-message-queue-dlq}
+  max-retry-count: 3
+  database:
+    schema: ${DB_SCHEMA:tmschema}
+  openmeteo:
+    geocoding-url: https://geocoding-api.open-meteo.com/v1/search
+    weather-url: https://api.open-meteo.com/v1/forecast
+
+logging:
+  level:
+    org.muralis.service: DEBUG
+    io.awspring.cloud.sqs: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+spring.cloud.aws:
+  region:
+    static: ${AWS_REGION:us-east-1}
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+  sqs:
+    listener:
+      auto-startup: true
+      max-concurrent-messages: 10
+      max-messages-per-poll: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    export:
+      cloudwatch:
+        namespace: EventDrivenMicroservice
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:false}
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      weatherApi:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+        recordExceptions:
+          - org.muralis.service.exception.RecoverableApiException
+        ignoreExceptions:
+          - org.muralis.service.exception.IrrecoverableApiException
+  retry:
+    instances:
+      weatherApi:
+        maxAttempts: 3
+        waitDuration: 1s
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.muralis.service.exception.RecoverableApiException
+        ignoreExceptions:
+          - org.muralis.service.exception.IrrecoverableApiException
+  timelimiter:
+    instances:
+      weatherApi:
+        timeoutDuration: 10s
+
