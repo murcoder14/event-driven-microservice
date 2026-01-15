@@ -7,7 +7,6 @@ import org.muralis.service.model.DirectMessage;
 import org.muralis.service.model.WeatherResponse;
 import org.muralis.service.repository.DirectMessageRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -19,7 +18,6 @@ public class DirectMessageService {
     private final DirectMessageRepository repository;
     private final OpenMeteoClient weatherClient;
     
-    @Transactional
     public void processMessage(String city, String country, String messageId) {
         // Idempotency check - do this FIRST before any external API calls
         if (repository.existsByMessageId(messageId)) {

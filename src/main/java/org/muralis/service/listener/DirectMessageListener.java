@@ -1,7 +1,5 @@
 package org.muralis.service.listener;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.awspring.cloud.sqs.annotation.SqsListener;
 import io.awspring.cloud.sqs.listener.acknowledgement.Acknowledgement;
 import lombok.RequiredArgsConstructor;
@@ -9,9 +7,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.muralis.service.exception.DatabaseException;
 import org.muralis.service.exception.IrrecoverableApiException;
 import org.muralis.service.exception.RecoverableApiException;
+import org.muralis.service.model.DirectMessagePayload;
 import org.muralis.service.service.DirectMessageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
@@ -22,7 +22,6 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 public class DirectMessageListener {
 
     private final DirectMessageService messageService;
-    private final ObjectMapper objectMapper;
     private final SqsAsyncClient sqsAsyncClient;
     
     @Value("${app.direct-message-dlq}")
@@ -32,16 +31,15 @@ public class DirectMessageListener {
     private int maxRetryCount;
 
     @SqsListener(value = "${app.direct-message-queue}", acknowledgementMode = "MANUAL")
-    public void onMessage(String messageBody, 
+    public void onMessage(@Payload DirectMessagePayload payload, 
                          Acknowledgement acknowledgement,
                          @Header("Sqs_Msa_ApproximateReceiveCount") String receiveCount) {
-        log.info("Received SQS message (receiveCount={}): {}", receiveCount, messageBody);
+        log.info("Received SQS message (receiveCount={}): {}", receiveCount, payload);
 
         try {
-            JsonNode json = objectMapper.readTree(messageBody);
-            String city = json.get("city").asText();
-            String country = json.get("country").asText();
-            String messageId = json.get("messageId").asText();
+            String city = payload.city();
+            String country = payload.country();
+            String messageId = payload.messageId();
             
             log.info("Parsed attributes - city: {}, country: {}, messageId: {}", city, country, messageId);
             
@@ -55,7 +53,7 @@ public class DirectMessageListener {
         } catch (IrrecoverableApiException e) {
             // Irrecoverable error - send directly to DLQ
             log.error("Irrecoverable error processing message, sending to DLQ: {}", e.getMessage());
-            sendToDLQ(messageBody, e.getMessage());
+            sendToDLQ(payload.toString(), e.getMessage());
             acknowledgement.acknowledge(); // Acknowledge to prevent reprocessing
             
         } catch (RecoverableApiException e) {
