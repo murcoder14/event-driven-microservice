@@ -774,6 +774,40 @@ However, this doesn't eliminate the need for idempotency because:
 - Producer bugs can send duplicates with different deduplication IDs
 
 The idempotency check protects against all these scenarios.
+
+---
+
+## Transaction Management
+
+### Q: Why was @Transactional removed from the message processing service?
+
+**Short Answer**: To prevent long-running database transactions during external API calls, which can exhaust the database connection pool and degrade performance.
+
+**Detailed Explanation**:
+
+The `DirectMessageService.processMessage` method performs three main steps:
+1. Idempotency check (Database read)
+2. Weather API call (External HTTP request)
+3. Save message (Database write)
+
+**Previous Approach (Anti-Pattern):**
+With `@Transactional` on the entire method, the database connection was held open during the entire execution, including the external API call.
+- If the weather API is slow (e.g., 2 seconds), the DB connection is locked for 2+ seconds.
+- If 50 concurrent messages arrive, 50 DB connections are locked waiting for the API.
+- This quickly exhausts the connection pool (default HikariCP size is often 10-20).
+
+**Current Approach (Best Practice):**
+By removing `@Transactional`, we scope transactions only to the actual database operations:
+1. **Idempotency Check**: Opens connection -> Runs Query -> Closes connection immediately.
+2. **Weather API Call**: No DB connection held.
+3. **Save Message**: Opens connection -> Runs Insert -> Closes connection immediately.
+
+**Trade-off**:
+- **Atomicity**: We lose the atomicity of the entire method, but since the API call is read-only (fetching weather), there is no state to roll back if the subsequent DB save fails.
+- **Consistency**: If the DB save fails, the message is retried. The idempotency check on retry ensures we don't re-process successfully saved messages.
+
+**Conclusion**: Removing `@Transactional` significantly improves system throughput and resilience against external API latency without sacrificing data integrity.
+
 ---
 
 ## AWS Networking and Connectivity
@@ -873,5 +907,3 @@ To implement private subnets with NAT Gateway, you would:
 3. Route private subnet traffic through NAT Gateway
 4. Set `assign_public_ip = false` in ECS service
 5. Update security group to only allow traffic from within VPC on ingress
-
----
