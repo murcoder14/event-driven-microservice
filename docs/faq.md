@@ -193,6 +193,120 @@ resource "aws_sqs_queue" "direct_message_queue" {
 
 ---
 
+### Q: What happens if sending a message to the DLQ fails?
+
+**Answer**: The system implements a **three-layer defense strategy** to prevent message loss when the DLQ is unavailable.
+
+#### Layer 1: Spring Retry with Exponential Backoff
+
+The `sendToDLQ()` method automatically retries transient failures:
+- **Max Attempts**: 3
+- **Backoff Strategy**: Exponential (1s, 2s, 4s)
+- **Retry Conditions**: `SqsException` and `SdkClientException`
+- **Total Retry Time**: ~7 seconds
+
+This handles temporary issues like network blips, SQS throttling, and transient AWS service issues.
+
+#### Layer 2: Database Fallback Table
+
+If all retry attempts fail, the message is saved to the `dlq_fallback` table:
+
+**Table Schema:**
+```sql
+CREATE TABLE dlq_fallback (
+    id SERIAL PRIMARY KEY,
+    message_body TEXT NOT NULL,
+    error_reason TEXT NOT NULL,
+    original_exception TEXT,
+    retry_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP,
+    processed BOOLEAN DEFAULT FALSE
+);
+```
+
+**Recovery Process:**
+
+Query unprocessed messages:
+```sql
+SELECT * FROM tmschema.dlq_fallback 
+WHERE processed = false 
+ORDER BY created_at DESC;
+```
+
+A scheduled job can periodically attempt to reprocess these messages and send them to the DLQ when it becomes available again.
+
+#### Layer 3: SQS Automatic Retry
+
+If both DLQ send and database fallback fail:
+1. The message is **NOT acknowledged**
+2. It returns to the main queue after visibility timeout
+3. SQS will retry processing
+4. Eventually, SQS's built-in redrive policy moves it to DLQ
+
+#### Message Flow
+
+```
+Main Processing Fails (IrrecoverableApiException)
+    ↓
+Attempt to Send to DLQ (with Spring Retry - 3 attempts)
+    ↓
+    ├─ SUCCESS → Acknowledge message ✓
+    │
+    └─ FAILURE (after 3 retries)
+        ↓
+        Save to Database Fallback Table
+        ↓
+        ├─ SUCCESS → Don't acknowledge, let SQS retry
+        │
+        └─ FAILURE → Don't acknowledge, let SQS retry
+                     (CRITICAL log emitted)
+```
+
+#### Monitoring Recommendations
+
+**Key Metrics to Monitor:**
+1. **DLQ Send Failures**: Count of messages entering the fallback table
+2. **Fallback Table Size**: Number of unprocessed records
+3. **Critical Failures**: Database fallback save failures (check logs)
+
+**CloudWatch Alarms:**
+- Alert when `dlq_fallback` table has > 10 unprocessed records
+- Alert on log pattern: "CRITICAL: Failed to save to DLQ fallback table"
+
+#### Configuration
+
+**Required Dependencies** (already added to `pom.xml`):
+```xml
+<dependency>
+    <groupId>org.springframework.retry</groupId>
+    <artifactId>spring-retry</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-aspects</artifactId>
+</dependency>
+```
+
+**Visibility Timeout Considerations:**
+
+Ensure your SQS visibility timeout is configured to accommodate:
+- Main processing time (weather API + DB save)
+- DLQ retry time (~7 seconds)
+- Buffer for processing overhead
+
+**Recommended**: 60-120 seconds minimum
+
+#### Benefits
+
+1. **No Message Loss**: Multiple fallback layers prevent data loss
+2. **Automatic Recovery**: Spring Retry handles transient issues
+3. **Operational Visibility**: Database table provides queryable audit trail
+4. **Graceful Degradation**: System continues operating even with DLQ issues
+5. **Manual Recovery**: Operators can process fallback messages when needed
+
+---
+
 ### Q: How should I handle recoverable vs irrecoverable errors when invoking remote APIs after reading from SQS?
 
 **Scenario**: After reading messages from SQS, you invoke remote APIs which can fail in two ways:
